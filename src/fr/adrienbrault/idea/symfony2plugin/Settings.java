@@ -3,6 +3,8 @@ package fr.adrienbrault.idea.symfony2plugin;
 import com.intellij.openapi.components.*;
 import com.intellij.openapi.project.Project;
 import com.intellij.util.xmlb.XmlSerializerUtil;
+import fr.adrienbrault.idea.symfony2plugin.assistant.reference.MethodParameterSetting;
+import fr.adrienbrault.idea.symfony2plugin.assistant.signature.MethodSignatureSetting;
 import fr.adrienbrault.idea.symfony2plugin.dic.ContainerFile;
 import fr.adrienbrault.idea.symfony2plugin.templating.path.TwigNamespaceSetting;
 import org.jetbrains.annotations.Nullable;
@@ -13,7 +15,8 @@ import java.util.List;
 @State(
        name = "Settings",
        storages = {
-               @Storage(id = "default", file="$PROJECT_CONFIG_DIR$/symfony2.xml", scheme = StorageScheme.DIRECTORY_BASED)
+               @Storage(id = "default", file = StoragePathMacros.PROJECT_FILE),
+               @Storage(id = "dir", file = StoragePathMacros.PROJECT_CONFIG_DIR + "/symfony2.xml", scheme = StorageScheme.DIRECTORY_BASED)
        }
 )
 public class Settings implements PersistentStateComponent<Settings> {
@@ -37,6 +40,8 @@ public class Settings implements PersistentStateComponent<Settings> {
     public boolean objectRepositoryResultTypeProvider = true;
     public boolean objectManagerFindTypeProvider = true;
 
+    public boolean objectSignatureTypeProvider = false;
+
     public boolean twigAnnotateTemplate = true;
     public boolean twigAnnotateAsset = true;
     public boolean twigAnnotateAssetTags = true;
@@ -47,6 +52,8 @@ public class Settings implements PersistentStateComponent<Settings> {
     public boolean phpAnnotateRoute = true;
     public boolean phpAnnotateTemplateAnnotation = true;
 
+    public boolean phpHighlightServices = false;
+
     public boolean yamlAnnotateServiceConfig = true;
 
     @Nullable
@@ -54,6 +61,12 @@ public class Settings implements PersistentStateComponent<Settings> {
 
     @Nullable
     public List<ContainerFile> containerFiles = new ArrayList<ContainerFile>();
+
+    @Nullable
+    public List<MethodParameterSetting> methodParameterSettings = new ArrayList<MethodParameterSetting>();
+
+    @Nullable
+    public List<MethodSignatureSetting> methodSignatureSettings = new ArrayList<MethodSignatureSetting>();
 
     protected Project project;
 
