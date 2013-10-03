@@ -1,13 +1,17 @@
 package fr.adrienbrault.idea.symfony2plugin.templating.annotation;
 
+import com.intellij.codeInsight.intention.impl.BaseIntentionAction;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
-import com.intellij.openapi.fileEditor.OpenFileDescriptor;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.vfs.VfsUtil;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.patterns.PlatformPatterns;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.util.IncorrectOperationException;
 import com.jetbrains.php.PhpIndex;
 import com.jetbrains.php.lang.documentation.phpdoc.psi.PhpDocComment;
 import com.jetbrains.php.lang.documentation.phpdoc.psi.tags.PhpDocTag;
@@ -17,21 +21,17 @@ import com.jetbrains.twig.TwigFile;
 import fr.adrienbrault.idea.symfony2plugin.Settings;
 import fr.adrienbrault.idea.symfony2plugin.Symfony2ProjectComponent;
 import fr.adrienbrault.idea.symfony2plugin.TwigHelper;
+import fr.adrienbrault.idea.symfony2plugin.templating.PhpTemplateAnnotator;
 import fr.adrienbrault.idea.symfony2plugin.templating.util.TwigUtil;
+import fr.adrienbrault.idea.symfony2plugin.util.IdeHelper;
+import fr.adrienbrault.idea.symfony2plugin.util.PhpElementsUtil;
 import fr.adrienbrault.idea.symfony2plugin.util.SymfonyBundleUtil;
 import fr.adrienbrault.idea.symfony2plugin.util.dict.SymfonyBundle;
 import org.jetbrains.annotations.NotNull;
 
-import com.intellij.codeInsight.intention.impl.BaseIntentionAction;
-
-import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.util.IncorrectOperationException;
-
-import java.io.File;
-import java.io.IOException;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class TemplateAnnotationAnnotator implements Annotator {
 
@@ -42,19 +42,28 @@ public class TemplateAnnotationAnnotator implements Annotator {
             return;
         }
 
-        if(!PlatformPatterns.psiElement(PhpDocTag.class).accepts(element)) {
+        if(!(element instanceof PhpDocTag)) {
             return;
         }
 
-        if (element instanceof PhpDocTag) {
+        PhpDocTag phpDocTag = (PhpDocTag) element;
+        String docTagName = phpDocTag.getName();
+        if(docTagName == null || !docTagName.equals("@Template")) {
+            return;
+        }
 
-            PhpDocTag phpDocTag = (PhpDocTag) element;
+        String tagValue = phpDocTag.getTagValue();
+        String templateName;
 
-            String docTagName = phpDocTag.getName();
-            if(docTagName == null || !docTagName.equals("@Template") || !phpDocTag.getTagValue().equals("()")) {
-                return;
-            }
+        // @Template("FooBundle:Folder:foo.html.twig")
+        // @Template("FooBundle:Folder:foo.html.twig", "asdas")
+        // @Template(tag="name")
+        Matcher matcher = Pattern.compile("\\(\"(.*)\"").matcher(tagValue);
+        if (matcher.find()) {
+            templateName = matcher.group(1);
+        } else {
 
+            // find template name on lass method
             PhpDocComment docComment = PsiTreeUtil.getParentOfType(element, PhpDocComment.class);
             if(null == docComment) {
                 return;
@@ -65,24 +74,23 @@ public class TemplateAnnotationAnnotator implements Annotator {
                 return;
             }
 
-            String shortcutName = TwigUtil.getControllerMethodShortcut(method);
-            if(shortcutName == null) {
-                return;
-            }
-
-            Map<String, TwigFile> twigFilesByName = TwigHelper.getTwigFilesByName(element.getProject());
-            TwigFile twigFile = twigFilesByName.get(shortcutName);
-
-            if (null != twigFile) {
-                return;
-            }
-
-            if(null != element.getFirstChild()) {
-                holder.createWarningAnnotation(element.getFirstChild().getTextRange(), "Create Template")
-                    .registerFix(new CreatePropertyQuickFix(method));
-            }
-
+            templateName = TwigUtil.getControllerMethodShortcut(method);
         }
+
+        if(templateName == null) {
+            return;
+        }
+
+        if ( TwigHelper.getTemplatePsiElements(element.getProject(), templateName).length > 0) {
+            return;
+        }
+
+        if(null != element.getFirstChild()) {
+            holder.createWarningAnnotation(element.getFirstChild().getTextRange(), "Create Template")
+                .registerFix(new PhpTemplateAnnotator.CreateTemplateFix(templateName));
+        }
+
+
     }
 
     class CreatePropertyQuickFix extends BaseIntentionAction {
@@ -123,79 +131,45 @@ public class TemplateAnnotationAnnotator implements Annotator {
                         return;
                     }
 
-                    final PsiDirectory bundlePsiDir = symfonyBundle.getDirectory();
-                    if(bundlePsiDir == null) {
+                    VirtualFile bundleDirectory = symfonyBundle.getVirtualDirectory();
+                    if(bundleDirectory == null) {
                         return;
                     }
 
                     String actionName = method.getName();
                     actionName = actionName.substring(0, actionName.lastIndexOf("Action"));
+                    String twigFileName = actionName + ".html.twig";
 
-                    final String twigFileName = actionName + ".html.twig";
+                    VirtualFile controllerFile = method.getContainingFile().getVirtualFile();
+                    if(controllerFile == null) {
+                        return;
+                    }
 
-                    ApplicationManager.getApplication().runWriteAction(new Runnable() {
-                        @Override
-                        public void run() {
+                    // the directory of the controller file: can be in sub folder or bundle controller root dir
+                    VirtualFile bundleController = controllerFile.getParent();
 
-                            VirtualFile controllerFile = method.getContainingFile().getVirtualFile();
-                            if(controllerFile == null) {
-                                return;
-                            }
+                    // get controller name from class name
+                    PhpClass phpClass = method.getContainingClass();
+                    if(phpClass == null) {
+                        return;
+                    }
 
-                            // the directory of the controller file: can be in sub folder or bundle controller root dir
-                            VirtualFile bundleController = controllerFile.getParent();
+                    // all controllers need to be in <bundle>/Controller
+                    String path = symfonyBundle.getRelative(bundleController);
+                    if(path == null || !path.startsWith("Controller")) {
+                        return;
+                    }
 
-                            // get controller name from class name
-                            PhpClass phpClass = method.getContainingClass();
-                            if(phpClass == null) {
-                               return;
-                            }
+                    // gave use: Controller[/<subfolder>]/DefaultController
+                    path = path.substring(10);
+                    path += "/" + phpClass.getName();
 
-                            // all controllers need to be in <bundle>/Controller
-                            String path = symfonyBundle.getRelative(bundleController);
-                            if(!path.startsWith("Controller")) {
-                                return;
-                            }
+                    // strip the last Controller from the class name
+                    if(path.endsWith("Controller")) {
+                        path = path.substring(0, path.length() - 10);
+                    }
 
-                            // gave use: Controller[/<subfolder>]/DefaultController
-                            path = path.substring(10);
-                            path += "/" + phpClass.getName();
-
-                            // strip the last Controller fromt the class name
-                            if(path.endsWith("Controller")) {
-                                path = path.substring(0, path.length() - 10);
-                            }
-
-                            try {
-                                VfsUtil.createDirectoryIfMissing(bundlePsiDir.getVirtualFile(), "Resources/views" + path);
-                            } catch (IOException e) {
-                                return;
-                            }
-
-                            VirtualFile twigDirectory = VfsUtil.findRelativeFile(bundlePsiDir.getVirtualFile(), ("Resources/views" + path).split("/"));
-                            if(twigDirectory == null || !twigDirectory.exists()) {
-                                return;
-                            }
-
-                            File f = new File(twigDirectory.getCanonicalPath() + "/" + twigFileName);
-                            if(!f.exists()){
-                                try {
-                                    if(!f.createNewFile()) {
-                                        return;
-                                    }
-                                } catch (IOException e) {
-                                    return;
-                                }
-                            }
-
-                            VirtualFile twigFile = VfsUtil.findFileByIoFile(f, true);
-                            if(twigFile == null) {
-                                return;
-                            }
-
-                            new OpenFileDescriptor(project, twigFile, 0).navigate(true);
-                        }
-                    });
+                    ApplicationManager.getApplication().runWriteAction(IdeHelper.getRunnableCreateAndOpenFile(project, bundleDirectory, "Resources/views" + path + "/" + twigFileName));
 
                 }
             });

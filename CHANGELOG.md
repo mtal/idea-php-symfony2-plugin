@@ -1,6 +1,71 @@
 Changelog
 =========
 
+### Version names
+0.9.x: PhpStorm 6
+0.10.x: PhpStorm 7
+
+### 0.9.24 / 0.10.24
+* Provide settings for service line marker and disable it on default
+
+### 0.9.23 / 0.10.23
+* Provide a service line marker
+* Provide goto for class service definition (click on class name) if available in any suitable yaml or xml file
+* Optimize twig assets wildcard detection and goto filter
+* 0.10.23: Migrate javascripts and stylesheets to be compatible with twig plugin
+
+### 0.9.22
+* Add annotator for php instances inside yaml "calls" and "arguments" services
+* Add annotator for method names of yaml "calls"
+* Fix twig function insert handler insert double braces
+
+### 0.9.21
+* Support EventDispatcher calls inside php dispatcher and subscriber
+* Improvements of Event and Tag completion / goto in all languages
+* Provide global template goto in yaml
+* Improvements in xml to reflected features of previous release
+* Support locale routing of I18nRoutingBundle
+
+### 0.9.20
+* Mass improvements in php Container Builder (setAlias, Definition, Reference, Alias, findTaggedServiceIds)
+* Provide goto for tagged container classes in php and yaml
+* Support php template files
+* Add ui for custom signature type providers
+* Improvements in class doc hash provider and add new one #Interface
+
+### 0.9.19
+* Many improvements in template detection
+* Support for translation_domain inside OptionsResolverInterface:setDefaults
+* Hash tag docblocks are now searched on parent methods not only in current file
+* New provider for form options
+
+### 0.9.18
+* Directly goto into form options definition not only to method
+* Add form child name (underscore method) support on form builder resolve from setDefaultOptions:data_class
+* Resolve parent calls inside setDefaultOptions eg for getting base form options
+* Fix completion option on incomplete array definition (array key)
+* Add php type resolve on form type parameter to not only support form types aliases
+
+### 0.9.17
+* Refactor of FormTypes reference contributor to provide goto and custom provider
+* Provide form extension and default option array key completion / goto inside FormBuilder calls
+
+### 0.9.16
+* Improve twig extension parser to support goto and icons
+* Provide domain goto and completion for twig trans_default_domain tag
+* Add factory_method tag support inside yaml
+* "Create Template" annotator is now also available in php and twig render calls
+
+### 0.9.15
+* Implement method parameter completion / goto on custom signatures
+* Provide method parameter completion / goto on docblock hashtag
+* Update help page for new features
+
+### 0.9.14
+* Fix for Settings saving
+* Support PhpStorm EAP 7 build 130.1293
+* Types for getRepository calls dont need backreferences anymore
+
 ### 0.9.13
 * Add multi container support
 * Some improvements for Twig namespace ui
